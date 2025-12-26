@@ -3,59 +3,67 @@ import requests
 import json
 from datetime import datetime, timedelta
 
-# Load config.json
+# -------- Load Config --------
 with open("config.json") as f:
     config = json.load(f)
 
-BASE_URL = config["FIREBASE_URL"]   # e.g. https://vpnid-3004d-default-rtdb.firebaseio.com
+BASE_URL = config["FIREBASE_URL"].rstrip("/")   # sanitize
 
 
-# Save / Update User record
+# -------- Firebase Helpers --------
+def fb_url(path: str):
+    return f"{BASE_URL}/{path}.json"
+
+
 def set_user(user_id, data: dict):
-    requests.patch(f"{BASE_URL}/users/{user_id}.json", json=data)
+    try:
+        requests.patch(fb_url(f"users/{user_id}"), json=data, timeout=10)
+    except Exception as e:
+        print("⚠ Firebase write error:", e)
 
 
-# Read User
 def get_user(user_id):
-    r = requests.get(f"{BASE_URL}/users/{user_id}.json")
-    return r.json() or {}
+    try:
+        r = requests.get(fb_url(f"users/{user_id}"), timeout=10)
+        return r.json() or {}
+    except Exception as e:
+        print("⚠ Firebase read error:", e)
+        return {}
 
 
-# Add VIP Days
+# -------- Add / Extend VIP --------
 def set_user_vip(user_id, days):
     now = datetime.utcnow()
 
     user = get_user(user_id)
 
-    # If already VIP → extend from old expiry
-    if "expiry" in user and user.get("vip") is True:
-        start_time = datetime.fromtimestamp(user["expiry"])
-        if start_time > now:
-            now = start_time
+    # already vip → extend from current expiry
+    if user.get("vip") and "expiry" in user:
+        old = datetime.fromtimestamp(user["expiry"])
+        if old > now:
+            now = old
 
     expiry = (now + timedelta(days=days)).timestamp()
 
     data = {
         "vip": True,
-        "expiry": expiry
+        "expiry": expiry,
+        "updated": datetime.utcnow().timestamp()
     }
 
     set_user(user_id, data)
     return expiry
 
 
-# Check VIP Status
+# -------- Check VIP Status --------
 def is_vip(user_id):
     user = get_user(user_id)
 
-    if not user or "vip" not in user:
+    if not user or not user.get("vip"):
         return False
 
-    if user["vip"] is not True:
-        return False
-
-    if datetime.utcnow().timestamp() > user["expiry"]:
-        # Auto remove expired VIP
+    if datetime.utcnow().timestamp() > user.get("expiry", 0):
+        # auto disable expired vip
         set_user(user_id, {"vip": False})
         return False
 
