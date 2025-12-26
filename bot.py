@@ -51,7 +51,7 @@ async def approve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("❌ Admin only")
 
     if len(ctx.args) < 1:
-        return await update.message.reply_text("Usage:\n/approve <id>")
+        return await update.message.reply_text("Usage:\n/approve <req_id>")
 
     rid = ctx.args[0]
     result = approve_request(rid)
@@ -59,7 +59,7 @@ async def approve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Result: {result}")
 
 
-# RUN BOT
+# Run bot
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
