@@ -2,5 +2,5 @@
   "BOT_TOKEN": "8306555987:AAFPV1OLGAZ6XJBbSgtbIAXnB6fXITRrfqU",
   "ADMIN_ID": 7541964031,
   "FIREBASE_KEY_FILE": "service-key.json",
-  "FIREBASE_DB": "users"
+  "FIREBASE_DB": "https://vpnid-3004d-default-rtdb.firebaseio.com/"
 }
