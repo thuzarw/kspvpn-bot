@@ -1,41 +1,60 @@
-from database import create_request, approve_request
-from database import add_vip
+from database import create_request, approve_request, add_vip
 
-# Create token request (user command)
+ADMIN = int(config["ADMIN_ID"])
+
+
+# =========================
+# USER — Submit Token Request
+# =========================
 def token_request(update, ctx):
     uid = update.effective_user.id
 
     if len(ctx.args) < 3:
-        return update.message.reply_text("Usage:\n/token <token> <days> <price>")
+        return update.message.reply_text(
+            "Usage:\n/token <token> <days> <price>"
+        )
 
-    token = ctx.args[0]
-    days  = int(ctx.args[1])
-    price = int(ctx.args[2])
+    try:
+        token = ctx.args[0]
+        days  = int(ctx.args[1])
+        price = int(ctx.args[2])
+    except Exception:
+        return update.message.reply_text("❌ Invalid inputs")
+
+    if days <= 0 or price <= 0:
+        return update.message.reply_text("❌ Days & price must be greater than 0")
 
     rid = create_request(uid, token, days, price)
 
     update.message.reply_text(
         f"📝 Token submitted for review\n"
-        f"Request ID: `{rid}`\n"
+        f"📌 Request ID: `{rid}`\n"
         f"⏳ Waiting for admin approval",
         parse_mode="Markdown"
     )
 
 
-# Admin approve
+# =========================
+# ADMIN — Approve Request
+# =========================
 def approve(update, ctx):
     uid = update.effective_user.id
+
     if uid != ADMIN:
         return update.message.reply_text("❌ Admin only")
+
+    if len(ctx.args) < 1:
+        return update.message.reply_text("Usage:\n/approve <request_id>")
 
     rid = ctx.args[0]
     result = approve_request(rid)
 
-    msgs = {
-        "approved": "✅ Request Approved + VIP Added",
-        "no_credit": "❌ Not enough credits",
-        "already_processed": "⚠ Already processed",
-        "not_found": "❌ Invalid request ID"
+    messages = {
+        "approved": "✅ Request approved — VIP added successfully",
+        "no_credit": "❌ User does not have enough credits",
+        "invalid": "❌ Request data invalid",
+        "already_processed": "⚠ Request already processed",
+        "not_found": "❌ Request ID not found"
     }
 
-    update.message.reply_text(msgs.get(result, "Unknown status"))
+    update.message.reply_text(messages.get(result, "⚠ Unknown status"))
