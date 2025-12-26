@@ -1,4 +1,4 @@
-import logging
+def logging
 from telegram.ext import Updater, CommandHandler
 from config import config
 from database import create_request, approve_request
@@ -17,13 +17,13 @@ BOT_TOKEN = config["BOT_TOKEN"]
 # /start
 # =========================
 def start(update, ctx):
+    print("START COMMAND RECEIVED", update)
     user = update.effective_user.first_name
     update.message.reply_text(
         f"🎉 Welcome {user}!\n"
-        f"🤖 KSP VIP VPN Bot\n\n"
-        f"📌 Commands\n"
+        f"📌 Commands:\n"
         f"/token <token> <days> <price>\n"
-        f"/approve <req_id>  (Admin only)"
+        f"/approve <req_id> (Admin only)"
     )
 
 
