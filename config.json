@@ -1,6 +1,5 @@
 {
   "BOT_TOKEN": "8306555987:AAFPV1OLGAZ6XJBbSgtbIAXnB6fXITRrfqU",
   "ADMIN_ID": 7541964031,
-  "FIREBASE_DB",
-  "FIREBASE_URL": "https://vpnid-3004d-default-rtdb.firebaseio.com"
+  "FIREBASE_DB" "https://vpnid-3004d-default-rtdb.firebaseio.com",
 }
