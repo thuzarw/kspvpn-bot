@@ -1,72 +1,70 @@
-from telegram.ext import Updater, CommandHandler
+import logging
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, ContextTypes
+)
 from config import config
-from database import create_request, approve_request, add_vip
+from database import create_request, approve_request
+
+logging.basicConfig(level=logging.INFO)
 
 ADMIN = int(config["ADMIN_ID"])
+BOT_TOKEN = config["BOT_TOKEN"]
 
 
-# =========================
-# START MENU
-# =========================
-def start(update, ctx):
-    uid = update.effective_user.id
-    name = update.effective_user.first_name
-
-    update.message.reply_text(
-        f"🎉 Welcome {name}!\n"
-        f"🤖 KSP VPN Bot သို့ကြိုဆိုပါတယ်\n\n"
-        f"📌 Available Commands:\n"
+# /start
+async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user.first_name
+    await update.message.reply_text(
+        f"🎉 Welcome {user}!\n"
+        f"📌 Commands:\n"
         f"/token <token> <days> <price>\n"
-        f"/approve <req_id>  (Admin Only)"
+        f"/approve <req_id> (Admin only)"
     )
 
 
-# =========================
-# USER — Submit Token Request
-# =========================
-def token_request(update, ctx):
+# /token
+async def token_request(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
     if len(ctx.args) < 3:
-        return update.message.reply_text("Usage:\n/token <token> <days> <price>")
+        return await update.message.reply_text(
+            "Usage:\n/token <token> <days> <price>"
+        )
 
     token = ctx.args[0]
-    days  = int(ctx.args[1])
+    days = int(ctx.args[1])
     price = int(ctx.args[2])
 
     rid = create_request(uid, token, days, price)
 
-    update.message.reply_text(
+    await update.message.reply_text(
         f"📝 Token submitted\n"
-        f"📌 Request ID: `{rid}`\n"
-        f"⏳ Waiting for admin approval",
+        f"📌 Request ID: `{rid}`",
         parse_mode="Markdown"
     )
 
 
-# =========================
-# ADMIN — Approve Request
-# =========================
-def approve(update, ctx):
+# /approve
+async def approve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN:
-        return update.message.reply_text("❌ Admin only")
+        return await update.message.reply_text("❌ Admin only")
+
+    if len(ctx.args) < 1:
+        return await update.message.reply_text("Usage:\n/approve <id>")
 
     rid = ctx.args[0]
     result = approve_request(rid)
 
-    update.message.reply_text(f"Result: {result}")
+    await update.message.reply_text(f"Result: {result}")
 
 
-# =========================
-# BOT RUN
-# =========================
-updater = Updater(config["BOT_TOKEN"])
-dp = updater.dispatcher
+# RUN BOT
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-dp.add_handler(CommandHandler("start", start))
-dp.add_handler(CommandHandler("token", token_request))
-dp.add_handler(CommandHandler("approve", approve))
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("token", token_request))
+app.add_handler(CommandHandler("approve", approve))
 
-print("✅ Bot started...")
-updater.start_polling()
-updater.idle()
+print("✅ Bot running…")
+app.run_polling()
