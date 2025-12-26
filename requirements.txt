@@ -1,4 +1,4 @@
 pyrogram
 tgcrypto
-firebase-admin
-google-cloud-firestore
+requests
+firebase-admin==6.2.0
