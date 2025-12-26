@@ -17,13 +17,13 @@ BOT_TOKEN = config["BOT_TOKEN"]
 # /start
 # =========================
 def start(update, ctx):
-    print("START COMMAND RECEIVED", update)
+    print("🔥 START COMMAND RECEIVED")
+    print(update)
     user = update.effective_user.first_name
     update.message.reply_text(
         f"🎉 Welcome {user}!\n"
-        f"📌 Commands:\n"
         f"/token <token> <days> <price>\n"
-        f"/approve <req_id> (Admin only)"
+        f"/approve <req_id>"
     )
 
 
