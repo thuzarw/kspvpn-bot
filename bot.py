@@ -1,4 +1,4 @@
-def logging
+import logging
 from telegram.ext import Updater, CommandHandler
 from config import config
 from database import create_request, approve_request
@@ -18,12 +18,12 @@ BOT_TOKEN = config["BOT_TOKEN"]
 # =========================
 def start(update, ctx):
     print("🔥 START COMMAND RECEIVED")
-    print(update)
     user = update.effective_user.first_name
     update.message.reply_text(
         f"🎉 Welcome {user}!\n"
+        f"📌 Commands:\n"
         f"/token <token> <days> <price>\n"
-        f"/approve <req_id>"
+        f"/approve <req_id> (Admin only)"
     )
 
 
@@ -42,7 +42,7 @@ def token_request(update, ctx):
         token = ctx.args[0]
         days = int(ctx.args[1])
         price = int(ctx.args[2])
-    except:
+    except Exception:
         return update.message.reply_text("❌ Invalid values")
 
     rid = create_request(uid, token, days, price)
@@ -75,6 +75,7 @@ def approve(update, ctx):
 # BOT RUN
 # =========================
 def main():
+    print("🚀 Starting bot polling...")
     updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
 
@@ -83,7 +84,7 @@ def main():
     dp.add_handler(CommandHandler("approve", approve))
 
     print("✅ Bot started…")
-    updater.start_polling()
+    updater.start_polling(clean=True)
     updater.idle()
 
 
