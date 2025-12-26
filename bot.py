@@ -1,92 +1,61 @@
 import logging
-from telegram.ext import Updater, CommandHandler
-from config import config
-from database import create_request, approve_request
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, CallbackContext
+import json
 
-# Logging
+# Logging setup
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
-ADMIN = int(config["ADMIN_ID"])
+# Load config
+with open("config.json") as f:
+    config = json.load(f)
+
 BOT_TOKEN = config["BOT_TOKEN"]
+ADMIN_ID = config["ADMIN_ID"]
 
-
-# =========================
-# /start
-# =========================
-def start(update, ctx):
-    print("🔥 START COMMAND RECEIVED")
-    user = update.effective_user.first_name
+def start(update: Update, context: CallbackContext) -> None:
+    """Send a message when the command /start is issued."""
+    user = update.effective_user
     update.message.reply_text(
-        f"🎉 Welcome {user}!\n"
-        f"📌 Commands:\n"
-        f"/token <token> <days> <price>\n"
-        f"/approve <req_id> (Admin only)"
+        f'🎉 Welcome {user.first_name}!\n'
+        f'Your ID: {user.id}\n\n'
+        f'📌 Available commands:\n'
+        f'/start - Show this message\n'
+        f'/help - Show help\n'
+        f'/token <token> <days> <price> - Submit token'
     )
 
+def help_command(update: Update, context: CallbackContext) -> None:
+    """Send a message when the command /help is issued."""
+    update.message.reply_text('Help!')
 
-# =========================
-# /token
-# =========================
-def token_request(update, ctx):
-    uid = update.effective_user.id
+def main() -> None:
+    """Start the bot."""
+    print("🤖 Starting KSP VPN Bot...")
+    
+    # Create the Updater and pass it your bot's token.
+    updater = Updater(BOT_TOKEN)
 
-    if len(ctx.args) < 3:
-        return update.message.reply_text(
-            "Usage:\n/token <token> <days> <price>"
-        )
+    # Get the dispatcher to register handlers
+    dispatcher = updater.dispatcher
 
-    try:
-        token = ctx.args[0]
-        days = int(ctx.args[1])
-        price = int(ctx.args[2])
-    except Exception:
-        return update.message.reply_text("❌ Invalid values")
+    # Register command handlers
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("help", help_command))
 
-    rid = create_request(uid, token, days, price)
-
-    update.message.reply_text(
-        f"📝 Token submitted\n"
-        f"📌 Request ID: `{rid}`\n"
-        f"⏳ Waiting for admin approval",
-        parse_mode="Markdown"
-    )
-
-
-# =========================
-# /approve
-# =========================
-def approve(update, ctx):
-    if update.effective_user.id != ADMIN:
-        return update.message.reply_text("❌ Admin only")
-
-    if len(ctx.args) < 1:
-        return update.message.reply_text("Usage:\n/approve <req_id>")
-
-    rid = ctx.args[0]
-    result = approve_request(rid)
-
-    update.message.reply_text(f"Result: {result}")
-
-
-# =========================
-# BOT RUN
-# =========================
-def main():
-    print("🚀 Starting bot polling...")
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("token", token_request))
-    dp.add_handler(CommandHandler("approve", approve))
-
-    print("✅ Bot started…")
-    updater.start_polling(clean=True)
+    # Start the Bot
+    print("🔄 Starting polling...")
+    updater.start_polling()
+    
+    print("✅ Bot is running!")
+    print("📱 Send /start to your bot on Telegram")
+    
+    # Run the bot until you press Ctrl-C
     updater.idle()
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
