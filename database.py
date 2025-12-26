@@ -1,70 +1,63 @@
-# database.py
-import requests
-import json
+import requests, json, time
 from datetime import datetime, timedelta
 
-# -------- Load Config --------
 with open("config.json") as f:
     config = json.load(f)
 
-BASE_URL = config["FIREBASE_URL"].rstrip("/")   # sanitize
+BASE = config["FIREBASE_DB"]
 
 
-# -------- Firebase Helpers --------
-def fb_url(path: str):
-    return f"{BASE_URL}/{path}.json"
+def db(path):
+    return f"{BASE}/{path}.json"
 
 
-def set_user(user_id, data: dict):
-    try:
-        requests.patch(fb_url(f"users/{user_id}"), json=data, timeout=10)
-    except Exception as e:
-        print("⚠ Firebase write error:", e)
+def get(path):
+    return requests.get(db(path)).json() or {}
 
 
-def get_user(user_id):
-    try:
-        r = requests.get(fb_url(f"users/{user_id}"), timeout=10)
-        return r.json() or {}
-    except Exception as e:
-        print("⚠ Firebase read error:", e)
-        return {}
+def set(path, data):
+    requests.patch(db(path), json=data)
 
 
-# -------- Add / Extend VIP --------
-def set_user_vip(user_id, days):
+def cut_credits(user_id, amount):
+    user = get(f"users/{user_id}")
+    bal = int(user.get("credits", 0))
+
+    if bal < amount:
+        return False
+
+    set(f"users/{user_id}", {"credits": bal - amount})
+    return True
+
+
+def add_vip(user_id, days):
     now = datetime.utcnow()
+    user = get(f"users/{user_id}")
 
-    user = get_user(user_id)
-
-    # already vip → extend from current expiry
     if user.get("vip") and "expiry" in user:
-        old = datetime.fromtimestamp(user["expiry"])
-        if old > now:
-            now = old
+        exp = datetime.fromtimestamp(user["expiry"])
+        if exp > now:
+            now = exp
 
     expiry = (now + timedelta(days=days)).timestamp()
 
-    data = {
+    set(f"users/{user_id}", {
         "vip": True,
-        "expiry": expiry,
-        "updated": datetime.utcnow().timestamp()
-    }
+        "expiry": expiry
+    })
 
-    set_user(user_id, data)
     return expiry
 
 
-# -------- Check VIP Status --------
-def is_vip(user_id):
-    user = get_user(user_id)
+def create_request(user_id, token, days, price):
+    rid = str(int(time.time()*1000))
 
-    if not user or not user.get("vip"):
-        return False
+    set(f"pending_tokens/{rid}", {
+        "user_id": user_id,
+        "token": token,
+        "days": days,
+        "price": price,
+        "status": "pending"
+    })
 
-    if datetime.utcnow().timestamp() > user.get("expiry", 0):
-        # auto disable expired vip
-        set_user(user_id, {"vip": False})
-        return False
-
-    return True
+    return rid
