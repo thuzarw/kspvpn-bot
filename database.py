@@ -12,12 +12,18 @@ def db(path):
 
 
 def get(path):
-    r = requests.get(db(path))
-    return r.json() or {}
+    try:
+        r = requests.get(db(path), timeout=10)
+        return r.json() or {}
+    except Exception:
+        return {}
 
 
 def set(path, data):
-    requests.patch(db(path), json=data)
+    try:
+        requests.patch(db(path), json=data, timeout=10)
+    except Exception:
+        pass
 
 
 # =========================
@@ -41,8 +47,16 @@ def add_vip(user_id, days):
     now = datetime.utcnow()
     user = get(f"users/{user_id}")
 
-    if user.get("vip") and user.get("expiry"):
-        exp = datetime.fromtimestamp(user["expiry"])
+    exp_raw = user.get("expiry")
+
+    # existing vip → extend from current expiry
+    if user.get("vip") and exp_raw:
+
+        try:
+            exp = datetime.fromtimestamp(float(exp_raw))
+        except Exception:
+            exp = now
+
         if exp > now:
             now = exp
 
@@ -63,10 +77,10 @@ def create_request(user_id, token, days, price):
     rid = str(int(time.time() * 1000))
 
     set(f"pending_tokens/{rid}", {
-        "user_id": user_id,
-        "token": token,
-        "days": days,
-        "price": price,
+        "user_id": str(user_id),
+        "token": str(token),
+        "days": int(days),
+        "price": int(price),
         "status": "pending",
         "created": int(time.time())
     })
@@ -83,9 +97,13 @@ def approve_request(rid):
     if req.get("status") != "pending":
         return "already_processed"
 
-    user_id = req["user_id"]
-    price = int(req["price"])
-    days = int(req["days"])
+    user_id = req.get("user_id")
+    price = int(req.get("price", 0))
+    days = int(req.get("days", 0))
+
+    if not user_id or days <= 0:
+        set(f"pending_tokens/{rid}", {"status": "invalid_data"})
+        return "invalid"
 
     # deduct credits
     if not cut_credits(user_id, price):
