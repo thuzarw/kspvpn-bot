@@ -1,65 +1,62 @@
 #!/usr/bin/env python3
 """
-KSP VIP VPN Bot - Auto System with Inline Keyboard
+KSP VIP VPN - Complete Auto System
 """
 
 import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 import json
-from database import get_user, create_user, add_credits, cut_credits, add_vip
+from database import (
+    get_user, create_user, add_credits, cut_credits, add_vip,
+    get_vip_status, add_payment_request, create_request, approve_request
+)
 
-# Setup logging
+# Setup
 logging.basicConfig(level=logging.INFO)
 
 print("=" * 60)
-print("🤖 KSP VIP VPN - INLINE MENU SYSTEM")
+print("🤖 KSP VIP VPN - AUTO SYSTEM")
 print("=" * 60)
 
-# Load config
 with open("config.json") as f:
     config = json.load(f)
 
 BOT_TOKEN = config["BOT_TOKEN"]
 ADMIN_ID = config["ADMIN_ID"]
 
-# VIP Packages
-VIP_PACKAGES = {
-    "1month": {"days": 30, "credits": 50, "name": "1 Month VIP"},
-    "2month": {"days": 60, "credits": 100, "name": "2 Months VIP"},
-    "3month": {"days": 90, "credits": 120, "name": "3 Months VIP"},
-    "6month": {"days": 180, "credits": 200, "name": "6 Months VIP"}
-}
+# User states for conversation
+user_states = {}
 
 # ========================
-# KEYBOARDS
+# INLINE KEYBOARDS
 # ========================
 def main_menu():
     keyboard = [
-        [InlineKeyboardButton("💰 Buy Credits", callback_data='credits')],
-        [InlineKeyboardButton("👑 VIP Packages", callback_data='vip')],
-        [InlineKeyboardButton("📊 My Balance", callback_data='balance')],
-        [InlineKeyboardButton("🆘 Help", callback_data='help')]
+        [InlineKeyboardButton("💰 ငွေဖြည့်ရန်", callback_data='add_money')],
+        [InlineKeyboardButton("👑 VIP ဝယ်ရန်", callback_data='buy_vip')],
+        [InlineKeyboardButton("🔑 Token တင်ရန်", callback_data='submit_token')],
+        [InlineKeyboardButton("📊 အကြွင်းစာရင်း", callback_data='check_balance')],
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def credits_menu():
+def credit_packages_menu():
     keyboard = [
-        [InlineKeyboardButton("50 Credits", callback_data='buy_50')],
-        [InlineKeyboardButton("100 Credits", callback_data='buy_100')],
-        [InlineKeyboardButton("200 Credits", callback_data='buy_200')],
-        [InlineKeyboardButton("500 Credits", callback_data='buy_500')],
-        [InlineKeyboardButton("🔙 Back", callback_data='back_main')]
+        [InlineKeyboardButton("50 Credits - 50ဘတ်", callback_data='credit_50')],
+        [InlineKeyboardButton("100 Credits - 100ဘတ်", callback_data='credit_100')],
+        [InlineKeyboardButton("200 Credits - 200ဘတ်", callback_data='credit_200')],
+        [InlineKeyboardButton("500 Credits - 500ဘတ်", callback_data='credit_500')],
+        [InlineKeyboardButton("🔙 နောက်သို့", callback_data='main_menu')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def vip_menu():
+def vip_packages_menu():
     keyboard = [
-        [InlineKeyboardButton("1 Month - 50 credits", callback_data='vip_1')],
-        [InlineKeyboardButton("2 Months - 100 credits", callback_data='vip_2')],
-        [InlineKeyboardButton("3 Months - 120 credits", callback_data='vip_3')],
-        [InlineKeyboardButton("6 Months - 200 credits", callback_data='vip_6')],
-        [InlineKeyboardButton("🔙 Back", callback_data='back_main')]
+        [InlineKeyboardButton("1 လ - 50 credits", callback_data='vip_1month')],
+        [InlineKeyboardButton("2 လ - 100 credits", callback_data='vip_2month')],
+        [InlineKeyboardButton("3 လ - 120 credits", callback_data='vip_3month')],
+        [InlineKeyboardButton("6 လ - 200 credits", callback_data='vip_6month')],
+        [InlineKeyboardButton("🔙 နောက်သို့", callback_data='main_menu')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -67,33 +64,37 @@ def vip_menu():
 # COMMAND HANDLERS
 # ========================
 def start(update, context):
-    """Start command with inline keyboard"""
+    """Start command"""
     user = update.effective_user
     user_id = user.id
     
-    # Ensure user exists in database
+    # Create user if not exists
     if not get_user(user_id):
-        create_user(user_id, {"name": user.first_name})
+        create_user(user_id, {
+            "name": user.first_name,
+            "username": user.username,
+            "credits": 0,
+            "vip": False
+        })
     
-    welcome = (
-        f"✨ *Welcome to KSP VIP VPN!*\n\n"
-        f"👤 *User:* {user.first_name}\n"
-        f"🆔 *ID:* `{user_id}`\n\n"
-        f"*Premium Features:*\n"
-        f"✅ Ultra Fast Speed\n"
-        f"✅ Unlimited Bandwidth\n"
-        f"✅ No Logs Policy\n\n"
-        f"👇 *Select an option below:*"
+    welcome_msg = (
+        f"✨ *KSP VIP VPN မှကြိုဆိုပါတယ်* ✨\n\n"
+        f"👤 အသုံးပြုသူ: {user.first_name}\n"
+        f"🆔 အိုင်ဒီ: `{user_id}`\n\n"
+        f"👇 *မီနူးကိုရွေးချယ်ပါ*"
     )
     
     update.message.reply_text(
-        welcome,
+        welcome_msg,
         parse_mode='Markdown',
         reply_markup=main_menu()
     )
 
+# ========================
+# BUTTON HANDLERS
+# ========================
 def button_handler(update, context):
-    """Handle inline keyboard button presses"""
+    """Handle inline buttons"""
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
@@ -105,59 +106,126 @@ def button_handler(update, context):
     user_data = get_user(user_id) or {}
     credits = user_data.get('credits', 0)
     
-    if data == 'credits':
+    if data == 'main_menu':
         query.edit_message_text(
-            "💰 *Buy Credits*\n\nSelect credit package:",
+            "🏠 *မူလမီနူး*\n\nရွေးချယ်ရန်:",
             parse_mode='Markdown',
-            reply_markup=credits_menu()
+            reply_markup=main_menu()
         )
     
-    elif data == 'vip':
+    elif data == 'add_money':
         query.edit_message_text(
-            "👑 *VIP Packages*\n\nSelect VIP package:",
+            "💰 *ငွေဖြည့်သွင်းရန်*\n\nပက်ကေ့ချ်ရွေးချယ်ပါ:",
             parse_mode='Markdown',
-            reply_markup=vip_menu()
+            reply_markup=credit_packages_menu()
         )
     
-    elif data == 'balance':
-        vip_status = "✅ Active" if user_data.get('vip') else "❌ Inactive"
+    elif data == 'buy_vip':
+        vip_status = get_vip_status(user_id)
+        
+        if credits >= 50:
+            message = (
+                f"👑 *VIP ဝယ်ယူရန်*\n\n"
+                f"💰 လက်ကျန်ငွေ: {credits} credits\n"
+                f"✅ VIP ဝယ်ယူနိုင်ပါသည်\n\n"
+                f"ပက်ကေ့ချ်ရွေးချယ်ပါ:"
+            )
+        else:
+            needed = 50 - credits
+            message = (
+                f"👑 *VIP ဝယ်ယူရန်*\n\n"
+                f"💰 လက်ကျန်ငွေ: {credits} credits\n"
+                f"❌ VIP ဝယ်ယူရန် ငွေမလုံလောက်ပါ\n"
+                f"📈 လိုအပ်ငွေ: {needed} credits\n\n"
+                f"ငွေဖြည့်သွင်းရန် ကျေးဇူးပြု၍:"
+            )
+        
         query.edit_message_text(
-            f"📊 *Your Balance*\n\n"
-            f"💎 *Credits:* {credits}\n"
-            f"👑 *VIP Status:* {vip_status}\n\n"
-            f"*Options:*",
+            message,
+            parse_mode='Markdown',
+            reply_markup=vip_packages_menu()
+        )
+    
+    elif data == 'check_balance':
+        vip_info = get_vip_status(user_id)
+        vip_status = "✅ ဖွင့်ထားသည်" if vip_info.get('vip') else "❌ ပိတ်ထားသည်"
+        
+        query.edit_message_text(
+            f"📊 *သင့်အကောင့်*\n\n"
+            f"👤 အမည်: {query.from_user.first_name}\n"
+            f"🆔 အိုင်ဒီ: `{user_id}`\n"
+            f"💎 ခရက်ဒစ်: {credits}\n"
+            f"👑 VIP အနေအထား: {vip_status}\n\n"
+            f"*ရွေးချယ်ရန်:*",
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("💰 Buy Credits", callback_data='credits')],
-                [InlineKeyboardButton("👑 Get VIP", callback_data='vip')],
-                [InlineKeyboardButton("🔙 Main Menu", callback_data='back_main')]
+                [InlineKeyboardButton("💰 ငွေဖြည့်ရန်", callback_data='add_money')],
+                [InlineKeyboardButton("👑 VIP ဝယ်ရန်", callback_data='buy_vip')],
+                [InlineKeyboardButton("🔙 နောက်သို့", callback_data='main_menu')]
             ])
         )
     
-    elif data.startswith('buy_'):
-        amount = int(data.replace('buy_', ''))
-        price_map = {50: 1, 100: 2, 200: 3.5, 500: 8}
-        price = price_map.get(amount, 0)
+    elif data == 'submit_token':
+        # Set user state for token submission
+        user_states[user_id] = 'waiting_for_token'
         
         query.edit_message_text(
-            f"🛒 *Purchase Details*\n\n"
-            f"📦 *Package:* {amount} Credits\n"
-            f"💰 *Price:* ${price}\n\n"
-            f"*Payment Methods:*\n"
-            f"• Credit/Debit Card\n"
-            f"• Mobile Payment\n\n"
-            f"*Contact admin for payment:* @KSPAdmin",
+            "🔑 *Token တင်သွင်းရန်*\n\n"
+            "ကျေးဇူးပြု၍ အောက်ပါ format အတိုင်း token ပို့ပါ:\n\n"
+            "`/token YOUR_TOKEN_HERE DAYS PRICE`\n\n"
+            "📋 *ဥပမာ:*\n"
+            "`/token ABC123XYZ 30 1000`\n\n"
+            "📝 *ရှင်းလင်းချက်:*\n"
+            "• YOUR_TOKEN_HERE = VPN Token\n"
+            "• DAYS = ရက်ပေါင်း\n"
+            "• PRICE = ခရက်ဒစ်ပမာဏ",
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("💳 Pay Now", url=f"https://t.me/KSPAdmin")],
-                [InlineKeyboardButton("🔙 Back", callback_data='credits')]
+                [InlineKeyboardButton("🔙 နောက်သို့", callback_data='main_menu')]
+            ])
+        )
+    
+    elif data.startswith('credit_'):
+        amounts = {'50': 50, '100': 100, '200': 200, '500': 500}
+        amount = data.replace('credit_', '')
+        credits_amount = amounts.get(amount, 50)
+        price = credits_amount  # 50 credits = 50ဘတ်
+        
+        # Set user state for payment
+        user_states[user_id] = f'payment_{amount}'
+        
+        kbpay_number = "09xxxxxxxxx"  # KBZ Pay number
+        wave_number = "09xxxxxxxxx"   # Wave Money number
+        
+        query.edit_message_text(
+            f"💰 *ငွေဖြည့်သွင်းရန်*\n\n"
+            f"📦 ပက်ကေ့ချ်: {amount} Credits\n"
+            f"💵 စျေးနှုန်း: {price} ဘတ်\n\n"
+            f"*ငွေလွှဲရန်နံပါတ်များ:*\n"
+            f"🏦 KBZ Pay: `{kbpay_number}`\n"
+            f"📱 Wave Money: `{wave_number}`\n\n"
+            f"*လုပ်ဆောင်ချက်:*\n"
+            "1. ငွေလွှဲပြီးပါက\n"
+            "2. ငွေလွှဲ Screenshot ပို့ပါ\n"
+            "3. Admin မှအတည်ပြုပေးပါမည်\n\n"
+            f"*မှတ်ချက်:* {amount} credits ရရှိမည်",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📸 Screenshot ပို့ရန်", callback_data='send_screenshot')],
+                [InlineKeyboardButton("🔙 နောက်သို့", callback_data='add_money')]
             ])
         )
     
     elif data.startswith('vip_'):
-        vip_map = {'1': '1month', '2': '2month', '3': '3month', '6': '6month'}
-        package_id = vip_map.get(data.replace('vip_', ''))
-        package = VIP_PACKAGES.get(package_id)
+        packages = {
+            '1month': {"days": 30, "credits": 50, "name": "1 လ VIP"},
+            '2month': {"days": 60, "credits": 100, "name": "2 လ VIP"},
+            '3month': {"days": 90, "credits": 120, "name": "3 လ VIP"},
+            '6month': {"days": 180, "credits": 200, "name": "6 လ VIP"}
+        }
+        
+        package_id = data
+        package = packages.get(package_id)
         
         if package:
             if credits >= package['credits']:
@@ -166,69 +234,226 @@ def button_handler(update, context):
                 cut_credits(user_id, package['credits'])
                 
                 new_credits = credits - package['credits']
+                
                 query.edit_message_text(
-                    f"🎉 *VIP Activated!*\n\n"
-                    f"📦 *Package:* {package['name']}\n"
-                    f"📅 *Duration:* {package['days']} days\n"
-                    f"💎 *Credits Used:* {package['credits']}\n"
-                    f"💰 *Remaining:* {new_credits} credits\n\n"
-                    f"✅ *Enjoy premium VPN access!*",
+                    f"🎉 *VIP အောင်မြင်စွာဖွင့်လိုက်ပါပြီ!*\n\n"
+                    f"📦 ပက်ကေ့ချ်: {package['name']}\n"
+                    f"📅 ကာလ: {package['days']} ရက်\n"
+                    f"💎 သုံးခဲ့သည့် ခရက်ဒစ်: {package['credits']}\n"
+                    f"💰 ကျန်ငွေ: {new_credits} credits\n\n"
+                    f"✅ *VPN ကိုအသုံးပြုနိုင်ပါပြီ*\n\n"
+                    f"*မှတ်ချက်:* VPN app ထဲက token ကို admin ထံပို့ပါ",
                     parse_mode='Markdown'
                 )
+                
+                # Ask for token
+                context.bot.send_message(
+                    chat_id=user_id,
+                    text="🔑 *VPN Token တောင်းခံခြင်း*\n\n"
+                         "ကျေးဇူးပြု၍ VPN app ထဲမှ token ကို အောက်ပါအတိုင်းပို့ပါ:\n\n"
+                         "`/sendtoken YOUR_VPN_TOKEN`\n\n"
+                         "*ဥပမာ:*\n"
+                         "`/sendtoken ABC123XYZ789`",
+                    parse_mode='Markdown'
+                )
+                
             else:
                 needed = package['credits'] - credits
                 query.edit_message_text(
-                    f"❌ *Insufficient Credits*\n\n"
-                    f"📦 *Package:* {package['name']}\n"
-                    f"💎 *Required:* {package['credits']} credits\n"
-                    f"💰 *Your Balance:* {credits} credits\n"
-                    f"📈 *Needed:* {needed} more credits\n\n"
-                    f"*Please buy more credits first.*",
+                    f"❌ *ငွေမလုံလောက်ပါ*\n\n"
+                    f"📦 ပက်ကေ့ချ်: {package['name']}\n"
+                    f"💎 လိုအပ်ငွေ: {package['credits']} credits\n"
+                    f"💰 သင့်လက်ကျန်: {credits} credits\n"
+                    f"📈 လိုအပ်သောငွေ: {needed} credits\n\n"
+                    f"ကျေးဇူးပြု၍ ငွေဖြည့်သွင်းပါ:",
                     parse_mode='Markdown',
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("💰 Buy Credits", callback_data='credits')],
-                        [InlineKeyboardButton("🔙 Back", callback_data='vip')]
+                        [InlineKeyboardButton("💰 ငွေဖြည့်ရန်", callback_data='add_money')],
+                        [InlineKeyboardButton("🔙 နောက်သို့", callback_data='buy_vip')]
                     ])
                 )
     
-    elif data == 'help':
+    elif data == 'send_screenshot':
+        user_states[user_id] = 'waiting_screenshot'
         query.edit_message_text(
-            "🆘 *Help & Support*\n\n"
-            "*How to Use:*\n"
-            "1. *Buy Credits* → Purchase credits\n"
-            "2. *VIP Packages* → Activate VIP access\n"
-            "3. *My Balance* → Check your account\n\n"
-            "*Need Help?*\n"
-            "Contact: @KSPAdmin",
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Main Menu", callback_data='back_main')]
-            ])
-        )
-    
-    elif data == 'back_main':
-        query.edit_message_text(
-            "🏠 *Main Menu*\n\nSelect an option:",
-            parse_mode='Markdown',
-            reply_markup=main_menu()
+            "📸 *ငွေလွှဲ Screenshot ပို့ရန်*\n\n"
+            "ကျေးဇူးပြု၍ ငွေလွှဲထားသည့် screenshot ကို ပုံအဖြစ်ပို့ပါ။\n\n"
+            "*မှတ်ချက်:* Screenshot ထဲတွင် ငွေလွှဲနံပါတ်၊ ငွေပမာဏ ပြည့်စုံစွာပါရပါမည်။",
+            parse_mode='Markdown'
         )
     
     query.answer()
 
 # ========================
+# MESSAGE HANDLERS
+# ========================
+def handle_message(update, context):
+    """Handle messages and photos"""
+    user_id = update.effective_user.id
+    message = update.message
+    
+    # Check if user is waiting for screenshot
+    if user_states.get(user_id) == 'waiting_screenshot' and message.photo:
+        # Forward to admin
+        caption = (
+            f"📸 *ငွေလွှဲ Screenshot*\n\n"
+            f"👤 အသုံးပြုသူ: {update.effective_user.first_name}\n"
+            f"🆔 အိုင်ဒီ: `{user_id}`\n"
+            f"📅 အချိန်: {update.message.date}"
+        )
+        
+        # Forward photo to admin
+        context.bot.send_photo(
+            chat_id=ADMIN_ID,
+            photo=message.photo[-1].file_id,
+            caption=caption,
+            parse_mode='Markdown'
+        )
+        
+        # Notify user
+        update.message.reply_text(
+            "✅ *Screenshot လက်ခံရရှိပါပြီ*\n\n"
+            "Admin မှစစ်ဆေးပြီး ခရက်ဒစ်ထည့်ပေးပါမည်။\n"
+            "မိနစ်အနည်းငယ်စောင့်ပါ။",
+            parse_mode='Markdown'
+        )
+        
+        # Reset state
+        user_states[user_id] = None
+        
+        return
+    
+    # Check if message contains token command
+    if message.text and message.text.startswith('/token'):
+        parts = message.text.split()
+        if len(parts) >= 4:
+            try:
+                token = parts[1]
+                days = int(parts[2])
+                price = int(parts[3])
+                
+                # Create token request
+                req_id = create_request(user_id, token, days, price)
+                
+                # Notify admin
+                admin_msg = (
+                    f"🔔 *Token တောင်းခံမှု*\n\n"
+                    f"👤 အသုံးပြုသူ: {update.effective_user.first_name}\n"
+                    f"🆔 အိုင်ဒီ: `{user_id}`\n"
+                    f"📌 တောင်းခံချက် ID: `{req_id}`\n"
+                    f"🔑 Token: `{token[:10]}...`\n"
+                    f"📅 ရက်: {days}\n"
+                    f"💰 စျေးနှုန်း: {price} credits\n\n"
+                    f"*အတည်ပြုရန်:* `/approve {req_id}`"
+                )
+                
+                context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=admin_msg,
+                    parse_mode='Markdown'
+                )
+                
+                update.message.reply_text(
+                    f"✅ *Token တင်သွင်းပြီးပါပြီ*\n\n"
+                    f"📌 တောင်းခံချက် ID: `{req_id}`\n"
+                    f"⏳ Admin အတည်ပြုချက်စောင့်ဆိုင်းနေပါသည်",
+                    parse_mode='Markdown'
+                )
+                
+            except Exception as e:
+                update.message.reply_text(f"❌ မှားယွင်းမှု: {str(e)}")
+        
+        return
+    
+    # Check if message contains sendtoken command
+    if message.text and message.text.startswith('/sendtoken'):
+        parts = message.text.split()
+        if len(parts) >= 2:
+            token = parts[1]
+            
+            # Forward to admin
+            admin_msg = (
+                f"🔑 *VPN Token ရရှိပါပြီ*\n\n"
+                f"👤 အသုံးပြုသူ: {update.effective_user.first_name}\n"
+                f"🆔 အိုင်ဒီ: `{user_id}`\n"
+                f"🔑 Token: `{token}`\n\n"
+                f"*မှတ်ချက်:* User သည် VIP ဝယ်ယူပြီးဖြစ်သည်။"
+            )
+            
+            context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=admin_msg,
+                parse_mode='Markdown'
+            )
+            
+            update.message.reply_text(
+                "✅ *Token လက်ခံရရှိပါပြီ*\n\n"
+                "Admin ထံသို့ပို့ပြီးဖြစ်သည်။\n"
+                "VPN configuration အတွက် စောင့်ပါ။",
+                parse_mode='Markdown'
+            )
+        
+        return
+
+# ========================
+# ADMIN COMMANDS
+# ========================
+def admin_approve(update, context):
+    """Admin approve payment or token"""
+    user_id = update.effective_user.id
+    
+    if str(user_id) != str(ADMIN_ID):
+        update.message.reply_text("❌ Admin များသာလုပ်ဆောင်နိုင်ပါသည်")
+        return
+    
+    if len(context.args) < 2:
+        update.message.reply_text("အသုံးပြုနည်း: `/approve USER_ID CREDITS`")
+        return
+    
+    try:
+        target_user = int(context.args[0])
+        credits = int(context.args[1])
+        
+        # Add credits
+        new_balance = add_credits(target_user, credits)
+        
+        # Notify user
+        context.bot.send_message(
+            chat_id=target_user,
+            text=f"✅ *ငွေဖြည့်သွင်းပြီးပါပြီ*\n\n"
+                 f"💰 ဖြည့်သွင်းငွေ: {credits} credits\n"
+                 f"💎 စုစုပေါင်းငွေ: {new_balance} credits\n\n"
+                 f"VIP ဝယ်ယူရန် အသင့်ဖြစ်ပါပြီ။",
+            parse_mode='Markdown'
+        )
+        
+        update.message.reply_text(
+            f"✅ User `{target_user}` အား {credits} credits ထည့်ပေးပြီးပါပြီ။\n"
+            f"သူ့လက်ကျန်: {new_balance} credits",
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        update.message.reply_text(f"❌ မှားယွင်းမှု: {str(e)}")
+
+# ========================
 # MAIN FUNCTION
 # ========================
 def main():
-    """Start the bot"""
+    """Start bot"""
     try:
         updater = Updater(BOT_TOKEN, use_context=True)
         dp = updater.dispatcher
         
         # Command handlers
         dp.add_handler(CommandHandler("start", start))
+        dp.add_handler(CommandHandler("approve", admin_approve))
         
-        # Callback query handler for inline buttons
+        # Button handler
         dp.add_handler(CallbackQueryHandler(button_handler))
+        
+        # Message handler
+        dp.add_handler(MessageHandler(Filters.text | Filters.photo, handle_message))
         
         print("✅ Bot setup complete")
         print("🔄 Starting polling...")
@@ -236,16 +461,13 @@ def main():
         updater.start_polling()
         
         print("\n" + "=" * 60)
-        print("🎉 AUTO MENU BOT IS RUNNING!")
+        print("🎉 AUTO VIP SYSTEM IS RUNNING!")
         print("=" * 60)
         print("✨ Features:")
-        print("  • Inline Keyboard Menu")
-        print("  • Credit Purchase System")
-        print("  • VIP Activation")
-        print("  • Balance Checking")
-        print("  • Auto Database Management")
-        print("=" * 60)
-        print("📱 Send /start to test")
+        print("  • ငွေဖြည့်သွင်းစနစ်")
+        print("  • VIP ဝယ်ယူစနစ်")
+        print("  • Token တင်သွင်းစနစ်")
+        print("  • Admin ထိန်းချုပ်စနစ်")
         print("=" * 60)
         
         updater.idle()
